@@ -15,18 +15,10 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-1
 
-      - name: Test SSM connectivity
+      - name: Create test.txt on EC2
         run: |
-          INSTANCE_ID=$(aws ec2 describe-instances \
-            --filters "Name=ip-address,Values=52.23.6.215" \
-            --query "Reservations[0].Instances[0].InstanceId" \
-            --output text)
-          
-          echo "Instance ID: $INSTANCE_ID"
-          
           aws ssm send-command \
-            --instance-ids "$INSTANCE_ID" \
+            --instance-id "i-0d85aa0914d810c66" \
             --document-name "AWS-RunShellScript" \
-            --parameters 'commands=["echo SSM connection successful"]' \
-            --query "Command.CommandId" \
+            --parameters 'commands=["echo hello from github actions > /home/pranat.siyal/test.txt"]' \
             --output text
