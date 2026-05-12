@@ -13,5 +13,5 @@ jobs:
         with:
           host: 52.23.6.215
           username: pranat.siyal
-          password: ${{ secrets.EC2_SSH_PASSWORD }}
+          password: ${{ secrets.EC2_VOICE_AGENT_SSH_PASSWORD }}
           script: bash ~/voice-agent/deploy.sh
