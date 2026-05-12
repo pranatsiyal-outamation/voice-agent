@@ -2,7 +2,7 @@ import asyncio
 import asyncpg
 import json
 import os
-from datetime import datetime
+from datetime import datetime, date
 import dateparser
 from dotenv import load_dotenv
 from livekit import agents, api, rtc
@@ -18,6 +18,7 @@ load_dotenv()
 HUMAN_REP_PHONE = "+19549130282"
 HUMAN_REP_NAME  = "Alex from the team"
 COMPANY_NAME    = "Nova AI"
+SECRET_DATE     = date(1999, 1, 10)
 
 # ─────────────────────────────────────────────────────────
 # AGENT CLASS
@@ -38,6 +39,8 @@ class Assistant(Agent):
         self._captured_fields = captured_fields
         self._ctx = ctx
         self._trunk_id = trunk_id
+        self._verify_attempts = 0
+        self._verified = False
 
         if direction == "outbound":
             instructions = f"""
@@ -50,13 +53,17 @@ class Assistant(Agent):
                 - You listen actively and adapt to their tone
 
                 Call flow:
-                1. Greet them by name if you know it, introduce yourself as Aria from {COMPANY_NAME}
-                2. State the purpose of your call in one clear sentence
-                3. Ask an open-ended question to understand their situation
-                4. If they express interest or want to speak with a human, use the transfer_to_human tool
-                5. If they want a callback later, use the note_followup_time tool and confirm the time back to them
-                6. If they mention their birthday, use the note_birthday tool to record it
-                7. If they're not interested, thank them politely and end the call
+                1. Greet them briefly, introduce yourself as Aria from {COMPANY_NAME}
+                2. Before anything else, tell them you need to verify their identity for security
+                3. Ask for their secret date (do not hint at the format or the value)
+                4. Call verify_secret_date with exactly what they say
+                5. If verification fails, follow the instruction returned by the tool exactly — either ask once more or end the call
+                6. Only after successful verification: state the purpose of your call in one clear sentence
+                7. Ask an open-ended question to understand their situation
+                8. If they express interest or want to speak with a human, use the transfer_to_human tool
+                9. If they want a callback later, use the note_followup_time tool and confirm the time back to them
+                10. If they mention their birthday, use the note_birthday tool to record it
+                11. If they're not interested, thank them politely and end the call
 
                 Rules:
                 - Never be pushy or repeat yourself more than once
@@ -126,7 +133,40 @@ class Assistant(Agent):
                 "Would you like me to schedule a callback instead?"
             )
 
-    # ── Tool 3: Note birthday ───────────────────────────────
+    # ── Tool 3: Verify caller identity ─────────────────────
+    @function_tool
+    async def verify_secret_date(self, context: RunContext, date_given: str):
+        """
+        Call this to verify the caller's identity using their secret date.
+        'date_given' is exactly what the caller said, e.g. 'January 10th 1999'.
+        """
+        parsed = dateparser.parse(date_given, settings={"RETURN_AS_TIMEZONE_AWARE": False})
+
+        if parsed and parsed.date() == SECRET_DATE:
+            self._verified = True
+            self._captured_fields["verified"] = True
+            print(f"[VERIFY] Identity confirmed.")
+            return "Identity verified. Proceed with the call purpose."
+
+        self._verify_attempts += 1
+        print(f"[VERIFY] Failed attempt {self._verify_attempts}. Given: {date_given!r} → parsed: {parsed}")
+
+        if self._verify_attempts >= 2:
+            self._captured_fields["verified"] = False
+
+            async def _end_call():
+                await asyncio.sleep(5)
+                await self._ctx.room.disconnect()
+
+            asyncio.create_task(_end_call())
+            return (
+                "Verification failed twice. Tell the caller their identity could not be confirmed "
+                "and the call must end. Say a polite goodbye, then stop speaking."
+            )
+
+        return "Incorrect date. Ask the caller to try one more time — they have one attempt remaining."
+
+    # ── Tool 4: Note birthday ───────────────────────────────
     @function_tool
     async def note_birthday(self, context: RunContext, birthday: str):
         """
