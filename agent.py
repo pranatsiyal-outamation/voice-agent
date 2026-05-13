@@ -123,30 +123,40 @@ class Assistant(Agent):
             print(f"[TRANSFER] Dial initiated. Rep's phone is ringing.")
 
             async def _brief_supervisor():
-                # Poll until human_rep appears as a remote participant (up to 30 s)
+                # Poll until human_rep has published an audio track (= actually answered).
+                # With wait_until_answered=False the participant is added to the room
+                # immediately on INVITE — we must wait for a track, not just presence.
                 for _ in range(30):
-                    if any(
-                        p.identity == "human_rep"
-                        for p in self._ctx.room.remote_participants.values()
+                    rep = next(
+                        (p for p in self._ctx.room.remote_participants.values()
+                         if p.identity == "human_rep"),
+                        None,
+                    )
+                    if rep and any(
+                        pub.kind == rtc.TrackKind.KIND_AUDIO
+                        for pub in rep.track_publications.values()
                     ):
                         break
                     await asyncio.sleep(1)
                 else:
-                    print("[TRANSFER] Human rep did not join within 30 s — skipping briefing.")
+                    print("[TRANSFER] Human rep did not answer within 30 s — skipping briefing.")
                     return
 
-                await asyncio.sleep(1)  # brief buffer for audio to stabilise
-                print("[TRANSFER] Human rep joined — delivering briefing.")
+                await asyncio.sleep(1)  # let audio settle
+                print("[TRANSFER] Human rep answered — delivering briefing.")
                 if self._session:
-                    await self._session.generate_reply(
-                        instructions=(
-                            f"Say exactly this to brief the supervisor who just joined the call: "
-                            f"'Hi {HUMAN_REP_NAME}, this is Aria. I'm passing you this call — {reason}. "
-                            f"I'll step back now and let you take it from here.' "
-                            f"Do not add anything else."
-                        ),
-                    )
-                    print("[TRANSFER] Briefing delivered — agent going silent.")
+                    try:
+                        await self._session.generate_reply(
+                            instructions=(
+                                f"Say exactly this to brief the supervisor who just joined the call: "
+                                f"'Hi {HUMAN_REP_NAME}, this is Aria. I'm passing you this call — {reason}. "
+                                f"I'll step back now and let you take it from here.' "
+                                f"Do not add anything else."
+                            ),
+                        )
+                        print("[TRANSFER] Briefing delivered — agent going silent.")
+                    except Exception as e:
+                        print(f"[TRANSFER] Briefing error (non-fatal): {e}")
 
             asyncio.create_task(_brief_supervisor())
 
