@@ -63,7 +63,7 @@ class Assistant(Agent):
                 7. If they want to speak with a human, use the transfer_to_human tool
                 8. If they want a callback later, use the note_followup_time tool and confirm the time back to them
                 9. If they mention their birthday, use the note_birthday tool to record it
-                10. If they're not interested, thank them politely and end the call
+                10. If they're not interested, thank them politely and end the call 
 
                 Rules:
                 - Never be pushy or repeat yourself more than once

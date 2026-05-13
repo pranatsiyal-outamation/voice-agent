@@ -33,8 +33,6 @@ jobs:
           # fix ownership so your user can still edit files locally
           chown -R pranat.siyal:pranat.siyal /home/pranat.siyal/voice-agent/
 
-          echo "Pull complete. Restarting service..."
-          systemctl restart voice-agent
           echo "Deploy done."
           EOF
           )
