@@ -62,7 +62,8 @@ class Assistant(Agent):
                 4. Call verify_secret_date with exactly what they say
                 5. If verification fails, follow the instruction returned by the tool exactly — either ask once more or end the call
                 6. Only after successful verification: state the purpose of your call in one clear sentence
-                7. If they want to speak with a human, use the transfer_to_human tool
+                (note please answer any user question if they seem confused)
+                7. If ask to speak with a human/specialist/ supervisor, use the transfer_to_human tool
                 8. If they want a callback later, use the note_followup_time tool and confirm the time back to them
                 9. If they mention their birthday, use the note_birthday tool to record it
                 10. If they're not interested, thank them politely and end the call
