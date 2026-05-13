@@ -32,6 +32,7 @@ class Assistant(Agent):
         captured_fields: dict = None,
         ctx: JobContext = None,
         trunk_id: str = None,
+        transcript: list = None,
     ):
         if captured_fields is None:
             captured_fields = {}
@@ -42,6 +43,7 @@ class Assistant(Agent):
         self._verify_attempts = 0
         self._verified = False
         self._session = None
+        self._transcript = transcript if transcript is not None else []
 
         if direction == "outbound":
             instructions = f"""
@@ -63,7 +65,8 @@ class Assistant(Agent):
                 7. If they want to speak with a human, use the transfer_to_human tool
                 8. If they want a callback later, use the note_followup_time tool and confirm the time back to them
                 9. If they mention their birthday, use the note_birthday tool to record it
-                10. If they're not interested, thank them politely and end the call 
+                10. If they're not interested, thank them politely and end the call
+                11. If they thank you and ask for a summary or recap of the call, use the summarise_call tool
 
                 Rules:
                 - Never be pushy or repeat yourself more than once
@@ -80,6 +83,7 @@ class Assistant(Agent):
                 If they mention scheduling or a follow-up time,
                 use the note_followup_time tool to record it.
                 If they mention their birthday, use the note_birthday tool to record it.
+                If they thank you and ask for a summary or recap of the call, use the summarise_call tool.
             """
 
         super().__init__(instructions=instructions)
@@ -217,6 +221,32 @@ class Assistant(Agent):
         self._captured_fields["birthday"] = birthday
         return f"Got it, I've noted your birthday as {birthday}."
 
+    # ── Tool 5: Summarise call on request ──────────────────
+    @function_tool
+    async def summarise_call(self, context: RunContext):
+        """
+        Call this when the caller thanks the agent and asks for a summary
+        or recap of the conversation.
+        """
+        if not self._transcript:
+            return "There is no conversation recorded yet to summarise."
+
+        formatted = "\n".join(
+            f"{item['role'].upper()}: {item['text']}"
+            for item in self._transcript
+            if item.get("text")
+        )
+        print(f"[SUMMARY] Generating from {len(self._transcript)} transcript items.")
+
+        return (
+            f"Here is the full conversation transcript:\n\n{formatted}\n\n"
+            "Based on this transcript, please do two things:\n"
+            "1. Give a 2-3 sentence summary of what was discussed.\n"
+            "2. State the overall sentiment — positive, neutral, or negative — "
+            "and give one short reason why.\n"
+            "Speak this naturally as if you are recapping the call to the caller."
+        )
+
 
 # ─────────────────────────────────────────────────────────
 # ENTRYPOINT
@@ -253,6 +283,7 @@ async def entrypoint(ctx: JobContext):
         captured_fields=captured_fields,
         ctx=ctx,
         trunk_id=trunk_id,
+        transcript=transcript,
     )
 
     session = AgentSession(
@@ -301,7 +332,7 @@ async def entrypoint(ctx: JobContext):
         # Cost calculation
         ended_at = datetime.utcnow()
         duration_minutes = (ended_at - started_at).total_seconds() / 60
-        estimated_cost = duration_minutes * 0.45
+        estimated_cost = duration_minutes * 0.045
         print(f"[COST] Duration: {duration_minutes:.2f} min | Estimated cost: ${estimated_cost:.4f}")
         print(f"[DEBUG] transferred={captured_fields['transferred']} "
               f"follow_up={captured_fields['follow_up_time']} "
