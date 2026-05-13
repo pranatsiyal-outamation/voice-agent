@@ -16,7 +16,7 @@ load_dotenv()
 # ─────────────────────────────────────────────────────────
 
 HUMAN_REP_PHONE = "+17202275031"
-HUMAN_REP_NAME  = "Alex from the team"
+HUMAN_REP_NAME  = "Al from the team"
 COMPANY_NAME    = "Outamation AI"
 SECRET_DATE     = date(1999, 1, 10)
 
