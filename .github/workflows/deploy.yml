@@ -20,6 +20,7 @@ jobs:
         run: |
           RAW_SCRIPT=$(cat << 'EOF'
           set -e
+          export HOME=/root
           echo "Current user: $(whoami)"
 
           # tell git it's safe to operate on this directory as root
