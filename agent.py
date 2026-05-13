@@ -138,11 +138,13 @@ class Assistant(Agent):
                 await asyncio.sleep(1)  # brief buffer for audio to stabilise
                 print("[TRANSFER] Human rep joined — delivering briefing.")
                 if self._session:
-                    await self._session.say(
-                        f"Hi {HUMAN_REP_NAME}, this is Aria. "
-                        f"I'm passing you this call — {reason}. "
-                        f"I'll step back now and let you take it from here.",
-                        allow_interruptions=False,
+                    await self._session.generate_reply(
+                        instructions=(
+                            f"Say exactly this to brief the supervisor who just joined the call: "
+                            f"'Hi {HUMAN_REP_NAME}, this is Aria. I'm passing you this call — {reason}. "
+                            f"I'll step back now and let you take it from here.' "
+                            f"Do not add anything else."
+                        ),
                     )
                     print("[TRANSFER] Briefing delivered — agent going silent.")
 
