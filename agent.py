@@ -15,9 +15,9 @@ load_dotenv()
 # CONFIG
 # ─────────────────────────────────────────────────────────
 
-HUMAN_REP_PHONE = "+19549130282"
+HUMAN_REP_PHONE = "+17202275031"
 HUMAN_REP_NAME  = "Alex from the team"
-COMPANY_NAME    = "Nova AI"
+COMPANY_NAME    = "Outamation AI"
 SECRET_DATE     = date(1999, 1, 10)
 
 # ─────────────────────────────────────────────────────────
@@ -41,6 +41,7 @@ class Assistant(Agent):
         self._trunk_id = trunk_id
         self._verify_attempts = 0
         self._verified = False
+        self._session = None
 
         if direction == "outbound":
             instructions = f"""
@@ -59,8 +60,7 @@ class Assistant(Agent):
                 4. Call verify_secret_date with exactly what they say
                 5. If verification fails, follow the instruction returned by the tool exactly — either ask once more or end the call
                 6. Only after successful verification: state the purpose of your call in one clear sentence
-                7. Ask an open-ended question to understand their situation
-                8. If they express interest or want to speak with a human, use the transfer_to_human tool
+                8. If they want to speak with a human, use the transfer_to_human tool
                 9. If they want a callback later, use the note_followup_time tool and confirm the time back to them
                 10. If they mention their birthday, use the note_birthday tool to record it
                 11. If they're not interested, thank them politely and end the call
@@ -121,6 +121,33 @@ class Assistant(Agent):
                 )
             )
             print(f"[TRANSFER] Dial initiated. Rep's phone is ringing.")
+
+            async def _brief_supervisor():
+                # Poll until human_rep appears as a remote participant (up to 30 s)
+                for _ in range(30):
+                    if any(
+                        p.identity == "human_rep"
+                        for p in self._ctx.room.remote_participants.values()
+                    ):
+                        break
+                    await asyncio.sleep(1)
+                else:
+                    print("[TRANSFER] Human rep did not join within 30 s — skipping briefing.")
+                    return
+
+                await asyncio.sleep(1)  # brief buffer for audio to stabilise
+                print("[TRANSFER] Human rep joined — delivering briefing.")
+                if self._session:
+                    await self._session.say(
+                        f"Hi {HUMAN_REP_NAME}, this is Aria. "
+                        f"I'm passing you this call — {reason}. "
+                        f"I'll step back now and let you take it from here.",
+                        allow_interruptions=False,
+                    )
+                    print("[TRANSFER] Briefing delivered — agent going silent.")
+
+            asyncio.create_task(_brief_supervisor())
+
             return (
                 f"I'm connecting you with {HUMAN_REP_NAME} right now — please hold for just a moment. "
                 f"They'll be with you shortly!"
@@ -208,12 +235,21 @@ async def entrypoint(ctx: JobContext):
     }
     transcript = []
 
+    agent = Assistant(
+        direction=direction,
+        purpose=purpose,
+        captured_fields=captured_fields,
+        ctx=ctx,
+        trunk_id=trunk_id,
+    )
+
     session = AgentSession(
         llm=google.beta.realtime.RealtimeModel(
             model="gemini-2.5-flash-native-audio-preview-12-2025",
             voice="Puck",
         )
     )
+    agent._session = session
 
     @session.on("conversation_item_added")
     def on_item(event):
@@ -230,16 +266,7 @@ async def entrypoint(ctx: JobContext):
         except Exception as e:
             print(f"[TRANSCRIPT] Could not capture: {e}")
 
-    await session.start(
-        room=ctx.room,
-        agent=Assistant(
-            direction=direction,
-            purpose=purpose,
-            captured_fields=captured_fields,
-            ctx=ctx,
-            trunk_id=trunk_id,
-        ),
-    )
+    await session.start(room=ctx.room, agent=agent)
 
     if direction == "outbound" and phone_number and trunk_id:
         print(f"[OUTBOUND] Dialing {phone_number}...")
