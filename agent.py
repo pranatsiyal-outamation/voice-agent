@@ -7,6 +7,7 @@ import dateparser
 from dotenv import load_dotenv
 from livekit import agents, api, rtc
 from livekit.agents import AgentSession, Agent, JobContext, function_tool, RunContext
+from livekit.agents.metrics import UsageCollector
 from livekit.plugins import google
 
 load_dotenv()
@@ -15,7 +16,7 @@ load_dotenv()
 # CONFIG
 # ─────────────────────────────────────────────────────────
 
-HUMAN_REP_PHONE = "+1954 913 0282"
+HUMAN_REP_PHONE = "+19549130282"
 HUMAN_REP_NAME  = "Al from the team"
 COMPANY_NAME    = "Outamation AI"
 SECRET_DATE     = date(1999, 1, 10)
@@ -295,6 +296,9 @@ async def entrypoint(ctx: JobContext):
     )
     agent._session = session
 
+    usage_collector = UsageCollector()
+    session.on("metrics_collected", usage_collector)
+
     @session.on("conversation_item_added")
     def on_item(event):
         try:
@@ -333,8 +337,15 @@ async def entrypoint(ctx: JobContext):
         # Cost calculation
         ended_at = datetime.utcnow()
         duration_minutes = (ended_at - started_at).total_seconds() / 60
-        estimated_cost = duration_minutes * 0.045
-        print(f"[COST] Duration: {duration_minutes:.2f} min | Estimated cost: ${estimated_cost:.4f}")
+        twilio_cost = duration_minutes * 0.02
+
+        usage = usage_collector.get_summary()
+        print(f"[COST] Duration:        {duration_minutes:.2f} min")
+        print(f"[COST] Input tokens:    {usage.llm_prompt_tokens}")
+        print(f"[COST] Output tokens:   {usage.llm_completion_tokens}")
+        print(f"[COST] Gemini (LLM):    ${usage.llm_total_cost:.4f}")
+        print(f"[COST] Twilio (SIP):    ${twilio_cost:.4f}")
+        print(f"[COST] Total:           ${usage.llm_total_cost + twilio_cost:.4f}")
         print(f"[DEBUG] transferred={captured_fields['transferred']} "
               f"follow_up={captured_fields['follow_up_time']} "
               f"birthday={captured_fields['birthday']} "
