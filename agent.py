@@ -2,12 +2,13 @@ import asyncio
 import asyncpg
 import json
 import os
+import time
 from datetime import datetime, date
 import dateparser
 from dotenv import load_dotenv
 from livekit import agents, api, rtc
 from livekit.agents import AgentSession, Agent, JobContext, function_tool, RunContext
-from livekit.agents.metrics import UsageCollector
+from livekit.agents.metrics import UsageCollector, LLMMetrics
 from livekit.plugins import google
 
 load_dotenv()
@@ -275,7 +276,7 @@ async def entrypoint(ctx: JobContext):
         "follow_up_time": None,
         "transferred": False,
         "transfer_reason": None,
-        "birthday": None,          # new field
+        "birthday": None,
     }
     transcript = []
 
@@ -339,13 +340,47 @@ async def entrypoint(ctx: JobContext):
         duration_minutes = (ended_at - started_at).total_seconds() / 60
         twilio_cost = duration_minutes * 0.02
 
+        # Gemini Realtime doesn't emit token counts through LiveKit's metrics
+        # pipeline, so we estimate from transcript text.
+        # Formula: 150 wpm ÷ 5 chars/word × 32 audio tokens/sec → ~0.427 tokens/char
+        TOKENS_PER_CHAR = 32 / (150 / 60 * 5)
+        user_chars  = sum(len(t.get("text") or "") for t in transcript if t.get("role") == "user")
+        agent_chars = sum(len(t.get("text") or "") for t in transcript if t.get("role") == "assistant")
+        input_tokens  = int(user_chars  * TOKENS_PER_CHAR)
+        output_tokens = int(agent_chars * TOKENS_PER_CHAR)
+
+        INPUT_COST_PER_1M  = 3.00
+        OUTPUT_COST_PER_1M = 12.00
+        input_cost  = (input_tokens  / 1_000_000) * INPUT_COST_PER_1M
+        output_cost = (output_tokens / 1_000_000) * OUTPUT_COST_PER_1M
+        gemini_cost = input_cost + output_cost
+
+        try:
+            usage_collector(LLMMetrics(
+                timestamp=time.time(),
+                request_id="gemini-realtime-estimated",
+                ttft=0.0,
+                duration=duration_minutes * 60,
+                cancelled=False,
+                label="gemini-2.5-flash-native-audio",
+                completion_tokens=output_tokens,
+                prompt_tokens=input_tokens,
+                total_tokens=input_tokens + output_tokens,
+                tokens_per_second=0.0,
+                input_cost=input_cost,
+                output_cost=output_cost,
+                total_cost=gemini_cost,
+            ))
+        except Exception as e:
+            print(f"[METRICS] Could not emit synthetic metrics: {e}")
+
         usage = usage_collector.get_summary()
-        print(f"[COST] Duration:        {duration_minutes:.2f} min")
-        print(f"[COST] Input tokens:    {usage.llm_prompt_tokens}")
-        print(f"[COST] Output tokens:   {usage.llm_completion_tokens}")
-        print(f"[COST] Gemini (LLM):    ${usage.llm_total_cost:.4f}")
-        print(f"[COST] Twilio (SIP):    ${twilio_cost:.4f}")
-        print(f"[COST] Total:           ${usage.llm_total_cost + twilio_cost:.4f}")
+        print(f"[COST] Duration:             {duration_minutes:.2f} min")
+        print(f"[COST] Input tokens (est):   {usage.llm_prompt_tokens}  @ ${INPUT_COST_PER_1M}/1M")
+        print(f"[COST] Output tokens (est):  {usage.llm_completion_tokens}  @ ${OUTPUT_COST_PER_1M}/1M")
+        print(f"[COST] Gemini (est):         ${gemini_cost:.6f}")
+        print(f"[COST] Twilio (SIP):         ${twilio_cost:.4f}")
+        print(f"[COST] Total:                ${gemini_cost + twilio_cost:.6f}")
         print(f"[DEBUG] transferred={captured_fields['transferred']} "
               f"follow_up={captured_fields['follow_up_time']} "
               f"birthday={captured_fields['birthday']} "
@@ -362,9 +397,6 @@ async def entrypoint(ctx: JobContext):
             except Exception as e:
                 print(f"[FOLLOWUP PARSE ERROR] {e}")
 
-        # Parse birthday string → Python date object
-        # dateparser handles natural language like "March 5th 1990" → datetime
-        # .date() strips the time component since we only need the date
         birthday_dt = None
         if captured_fields["birthday"]:
             try:
@@ -393,7 +425,7 @@ async def entrypoint(ctx: JobContext):
                 purpose,
                 json.dumps(transcript),
                 follow_up_dt,
-                birthday_dt,          # $6 — None if not captured, NULL in DB
+                birthday_dt,
             )
             await conn.close()
             print(f"[DB] Call saved. birthday={birthday_dt}")
