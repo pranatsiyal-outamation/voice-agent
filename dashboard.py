@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-HTML = b"""<!DOCTYPE html>
+HTML = """<!DOCTYPE html>
 <html><head><meta charset="UTF-8"><title>Calls</title>
 <style>
   body { font-family: monospace; background: #111; color: #ddd; padding: 20px; }
@@ -110,7 +110,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_response(500)
                 self.send_header("Content-Type", "application/json")
         else:
-            body = HTML
+            body = HTML.encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "text/html")
         self.send_header("Content-Length", len(body))
