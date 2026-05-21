@@ -130,17 +130,18 @@ class Assistant(Agent):
                         wait_until_answered=True,
                     )
                 )
-                print(f"[TRANSFER] Human rep answered — delivering briefing.")
-                await asyncio.sleep(2)  # let audio settle
+                print(f"[TRANSFER] Human rep answered — waiting for Aria to finish speaking.")
+                await asyncio.sleep(5)  # wait for tool-return speech to fully complete
+                print(f"[TRANSFER] Delivering briefing.")
                 if self._session:
                     await self._session.generate_reply(
-                        user_input=f"[SYSTEM: {HUMAN_REP_NAME} has joined the call]",
                         instructions=(
-                            f"The supervisor {HUMAN_REP_NAME} has just joined. "
-                            f"Brief them by saying exactly: "
-                            f"'Hi {HUMAN_REP_NAME}, this is Aria handing off — {reason}. "
-                            f"I'll let you take it from here.' "
-                            f"Say only that, nothing else."
+                            f"IMPORTANT: Stop whatever you are saying. "
+                            f"The supervisor {HUMAN_REP_NAME} has just joined the call. "
+                            f"Say exactly and only this: "
+                            f"'Hi {HUMAN_REP_NAME}, this is Aria — handing this call off to you. {reason}. "
+                            f"I'll step back now.' "
+                            f"Do not repeat the hold message. Do not add anything else."
                         ),
                     )
                     print("[TRANSFER] Briefing delivered — agent going silent.")
