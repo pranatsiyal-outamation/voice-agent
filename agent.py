@@ -301,6 +301,20 @@ async def entrypoint(ctx: JobContext):
         except Exception as e:
             print(f"[TRANSCRIPT] Could not capture: {e}")
 
+    @ctx.room.on("participant_disconnected")
+    def on_participant_disconnected(participant):
+        if participant.identity == "human_rep":
+            print("[TRANSFER] Supervisor dropped — Aria resuming.")
+            asyncio.ensure_future(
+                session.generate_reply(
+                    instructions=(
+                        "The supervisor has just left the call. "
+                        "Re-introduce yourself as Aria and let the caller know you're back. "
+                        "Ask how you can continue to help them."
+                    )
+                )
+            )
+
     await session.start(room=ctx.room, agent=agent)
 
     if direction == "outbound" and phone_number and trunk_id:
