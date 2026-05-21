@@ -149,16 +149,18 @@ class Assistant(Agent):
                     print("[TRANSFER] Human rep did not answer within 30 s — skipping briefing.")
                     return
 
-                await asyncio.sleep(1)  # let audio settle
+                await asyncio.sleep(3)  # let audio settle before speaking
                 print("[TRANSFER] Human rep answered — delivering briefing.")
                 if self._session:
                     try:
                         await self._session.generate_reply(
+                            user_input=f"[SYSTEM: {HUMAN_REP_NAME} has joined the call]",
                             instructions=(
-                                f"Say exactly this to brief the supervisor who just joined the call: "
-                                f"'Hi {HUMAN_REP_NAME}, this is Aria. I'm passing you this call — {reason}. "
-                                f"I'll step back now and let you take it from here.' "
-                                f"Do not add anything else."
+                                f"The supervisor {HUMAN_REP_NAME} has just joined. "
+                                f"Brief them by saying exactly: "
+                                f"'Hi {HUMAN_REP_NAME}, this is Aria handing off — {reason}. "
+                                f"I'll let you take it from here.' "
+                                f"Say only that, nothing else."
                             ),
                         )
                         print("[TRANSFER] Briefing delivered — agent going silent.")
@@ -302,10 +304,13 @@ async def entrypoint(ctx: JobContext):
     @session.on("metrics_collected")
     def on_metrics(metrics):
         nonlocal total_input_tokens, total_output_tokens
+        print(f"[METRICS DEBUG] event fired — type={type(metrics).__name__} raw={metrics}")
         if isinstance(metrics, RealtimeModelMetrics):
             total_input_tokens  += metrics.input_tokens
             total_output_tokens += metrics.output_tokens
-            print(f"[METRICS] turn input={metrics.input_tokens} output={metrics.output_tokens}")
+            print(f"[METRICS] turn input={metrics.input_tokens} output={metrics.output_tokens} | running total input={total_input_tokens} output={total_output_tokens}")
+        else:
+            print(f"[METRICS DEBUG] skipped — not RealtimeModelMetrics")
 
     @session.on("conversation_item_added")
     def on_item(event):
@@ -337,6 +342,12 @@ async def entrypoint(ctx: JobContext):
             )
         )
         print(f"[OUTBOUND] Call answered.")
+        await session.generate_reply(
+            instructions=(
+                "Greet the caller now. Introduce yourself as Aria from Outamation AI. "
+                "Then immediately tell them you need to verify their identity before proceeding."
+            )
+        )
 
     try:
         while ctx.room.connection_state == rtc.ConnectionState.CONN_CONNECTED:
