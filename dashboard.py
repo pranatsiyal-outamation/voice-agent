@@ -30,7 +30,7 @@ HTML = """<!DOCTYPE html>
 <table>
   <thead><tr>
     <th>#</th><th>Caller</th><th>Direction</th><th>Purpose</th>
-    <th>Follow-up</th><th>Transferred</th><th>Cost</th><th>Ended</th>
+    <th>Follow-up</th><th>Cost</th><th>Ended</th>
   </tr></thead>
   <tbody id="tb"></tbody>
 </table>
@@ -54,7 +54,6 @@ async function load() {
     tr.innerHTML = `<td>${i+1}</td><td>${c.caller_number||'—'}</td><td>${c.direction}</td>
       <td style="max-width:180px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">${c.purpose||'—'}</td>
       <td>${c.follow_up_time||'—'}</td>
-      <td>${c.transferred?'Yes':'No'}</td>
       <td>${c.cost!=null?'$'+Number(c.cost).toFixed(4):'—'}</td>
       <td>${c.ended_at||'—'}</td>`;
     tr.onclick = () => toggleTranscript(i, tr, c.transcript);
@@ -66,7 +65,7 @@ function toggleTranscript(id, tr, transcript) {
   const existing = document.getElementById('t'+id);
   if (existing) { existing.remove(); return; }
   const row = document.createElement('tr'); row.id = 't'+id;
-  const td = document.createElement('td'); td.colSpan = 8;
+  const td = document.createElement('td'); td.colSpan = 7;
   const box = document.createElement('div'); box.className = 'transcript';
   const items = Array.isArray(transcript) ? transcript : [];
   box.innerHTML = items.length
@@ -89,7 +88,7 @@ async def fetch_calls():
     try:
         rows = await conn.fetch(
             "SELECT caller_number, direction, purpose, follow_up_time, "
-            "birthday, transferred, cost, ended_at, transcript "
+            "birthday, cost, ended_at, transcript "
             "FROM calls ORDER BY ended_at DESC NULLS LAST LIMIT 100"
         )
     finally:
