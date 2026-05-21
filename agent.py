@@ -116,70 +116,43 @@ class Assistant(Agent):
         self._captured_fields["transferred"] = True
         self._captured_fields["transfer_reason"] = reason
 
-        try:
-            await self._ctx.api.sip.create_sip_participant(
-                api.CreateSIPParticipantRequest(
-                    sip_trunk_id=trunk,
-                    sip_call_to=HUMAN_REP_PHONE,
-                    room_name=self._ctx.room.name,
-                    participant_identity="human_rep",
-                    participant_name=HUMAN_REP_NAME,
-                    wait_until_answered=False,
-                )
-            )
-            print(f"[TRANSFER] Dial initiated. Rep's phone is ringing.")
-
-            async def _brief_supervisor():
-                # Poll until human_rep has published an audio track (= actually answered).
-                # With wait_until_answered=False the participant is added to the room
-                # immediately on INVITE — we must wait for a track, not just presence.
-                for _ in range(30):
-                    rep = next(
-                        (p for p in self._ctx.room.remote_participants.values()
-                         if p.identity == "human_rep"),
-                        None,
+        async def _dial_and_brief():
+            try:
+                print(f"[TRANSFER] Dialing {HUMAN_REP_PHONE}...")
+                # wait_until_answered=True blocks until SIP 200 OK — guaranteed answered
+                await self._ctx.api.sip.create_sip_participant(
+                    api.CreateSIPParticipantRequest(
+                        sip_trunk_id=trunk,
+                        sip_call_to=HUMAN_REP_PHONE,
+                        room_name=self._ctx.room.name,
+                        participant_identity="human_rep",
+                        participant_name=HUMAN_REP_NAME,
+                        wait_until_answered=True,
                     )
-                    if rep and any(
-                        pub.kind == rtc.TrackKind.KIND_AUDIO
-                        for pub in rep.track_publications.values()
-                    ):
-                        break
-                    await asyncio.sleep(1)
-                else:
-                    print("[TRANSFER] Human rep did not answer within 30 s — skipping briefing.")
-                    return
-
-                await asyncio.sleep(3)  # let audio settle before speaking
-                print("[TRANSFER] Human rep answered — delivering briefing.")
+                )
+                print(f"[TRANSFER] Human rep answered — delivering briefing.")
+                await asyncio.sleep(2)  # let audio settle
                 if self._session:
-                    try:
-                        await self._session.generate_reply(
-                            user_input=f"[SYSTEM: {HUMAN_REP_NAME} has joined the call]",
-                            instructions=(
-                                f"The supervisor {HUMAN_REP_NAME} has just joined. "
-                                f"Brief them by saying exactly: "
-                                f"'Hi {HUMAN_REP_NAME}, this is Aria handing off — {reason}. "
-                                f"I'll let you take it from here.' "
-                                f"Say only that, nothing else."
-                            ),
-                        )
-                        print("[TRANSFER] Briefing delivered — agent going silent.")
-                    except Exception as e:
-                        print(f"[TRANSFER] Briefing error (non-fatal): {e}")
+                    await self._session.generate_reply(
+                        user_input=f"[SYSTEM: {HUMAN_REP_NAME} has joined the call]",
+                        instructions=(
+                            f"The supervisor {HUMAN_REP_NAME} has just joined. "
+                            f"Brief them by saying exactly: "
+                            f"'Hi {HUMAN_REP_NAME}, this is Aria handing off — {reason}. "
+                            f"I'll let you take it from here.' "
+                            f"Say only that, nothing else."
+                        ),
+                    )
+                    print("[TRANSFER] Briefing delivered — agent going silent.")
+            except Exception as e:
+                print(f"[TRANSFER] Rep did not answer or error: {type(e).__name__}: {e}")
 
-            asyncio.create_task(_brief_supervisor())
+        asyncio.create_task(_dial_and_brief())
 
-            return (
-                f"I'm connecting you with {HUMAN_REP_NAME} right now — please hold for just a moment. "
-                f"They'll be with you shortly!"
-            )
-
-        except Exception as e:
-            print(f"[TRANSFER ERROR] {type(e).__name__}: {e}")
-            return (
-                "I'm sorry, I wasn't able to reach them right now. "
-                "Would you like me to schedule a callback instead?"
-            )
+        return (
+            f"I'm connecting you with {HUMAN_REP_NAME} right now — please hold for just a moment. "
+            f"They'll be with you shortly!"
+        )
 
     # ── Tool 3: Verify caller identity ─────────────────────
     @function_tool
@@ -302,15 +275,16 @@ async def entrypoint(ctx: JobContext):
     total_output_tokens = 0
 
     @session.on("metrics_collected")
-    def on_metrics(metrics):
+    def on_metrics(event):
         nonlocal total_input_tokens, total_output_tokens
-        print(f"[METRICS DEBUG] event fired — type={type(metrics).__name__} raw={metrics}")
+        metrics = event.metrics
+        print(f"[METRICS DEBUG] event fired — type={type(metrics).__name__}")
         if isinstance(metrics, RealtimeModelMetrics):
             total_input_tokens  += metrics.input_tokens
             total_output_tokens += metrics.output_tokens
             print(f"[METRICS] turn input={metrics.input_tokens} output={metrics.output_tokens} | running total input={total_input_tokens} output={total_output_tokens}")
         else:
-            print(f"[METRICS DEBUG] skipped — not RealtimeModelMetrics")
+            print(f"[METRICS DEBUG] skipped — not RealtimeModelMetrics, got {type(metrics).__name__}")
 
     @session.on("conversation_item_added")
     def on_item(event):
