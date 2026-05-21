@@ -16,7 +16,8 @@ load_dotenv()
 # CONFIG
 # ─────────────────────────────────────────────────────────
 
-HUMAN_REP_PHONE = "+19549130282"
+HUMAN_REP_PHONE = "+17202275031"
+# "+19549130282" # nirmals phone
 HUMAN_REP_NAME  = "Al from the team"
 COMPANY_NAME    = "Outamation AI"
 SECRET_DATE     = date(1999, 1, 10)
@@ -241,8 +242,6 @@ class Assistant(Agent):
         print(f"[SUMMARY] Generating from {len(self._transcript)} transcript items.")
 
         return (
-            f"Here is the full conversation transcript:\n\n{formatted}\n\n"
-            "Based on this transcript, please do two things:\n"
             "1. Give a 2-3 sentence summary of what was discussed.\n"
             "2. State the overall sentiment — positive, neutral, or negative — "
             "and give one short reason why.\n"
