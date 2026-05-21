@@ -69,7 +69,8 @@ function toggleTranscript(id, tr, transcript) {
   const box = document.createElement('div'); box.className = 'transcript';
   const items = Array.isArray(transcript) ? transcript : [];
   box.innerHTML = items.length
-    ? items.map(m => `<div class="${m.role}"><b>${m.role==='user'?'CALLER':'ARIA'}:</b> ${m.text||'<i>audio</i>'}</div>`).join('')
+    ? '<div style="color:#555;font-size:10px;margin-bottom:6px">* After transfer, HUMAN includes both caller and supervisor audio</div>'
+      + items.map(m => `<div class="${m.role}"><b>${m.role==='user'?'HUMAN':'ARIA'}:</b> ${m.text||'<i style="color:#444">audio only</i>'}</div>`).join('')
     : '<i style="color:#444">No transcript</i>';
   td.appendChild(box); row.appendChild(td); tr.after(row);
 }
