@@ -37,7 +37,16 @@ HTML = """<!DOCTYPE html>
 <script>
 async function load() {
   document.getElementById('info').textContent = 'Loading...';
-  const rows = await fetch('/api/calls').then(r => r.json());
+  let rows;
+  try {
+    const res = await fetch('/api/calls');
+    const data = await res.json();
+    if (!res.ok) { document.getElementById('info').textContent = 'Error: ' + (data.error || res.status); return; }
+    rows = data;
+  } catch(e) {
+    document.getElementById('info').textContent = 'Fetch error: ' + e.message;
+    return;
+  }
   const tb = document.getElementById('tb');
   tb.innerHTML = '';
   rows.forEach((c, i) => {
