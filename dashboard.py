@@ -29,8 +29,8 @@ HTML = """<!DOCTYPE html>
 <button onclick="load()">Refresh</button><span id="info"></span>
 <table>
   <thead><tr>
-    <th>#</th><th>Caller</th><th>Direction</th><th>Purpose</th>
-    <th>Follow-up</th><th>Cost</th><th>Ended</th>
+    <th>#</th><th>Caller</th><th>Purpose</th>
+    <th>Follow-up</th><th>Birthday</th><th>Cost</th><th>Ended</th>
   </tr></thead>
   <tbody id="tb"></tbody>
 </table>
@@ -51,9 +51,10 @@ async function load() {
   tb.innerHTML = '';
   rows.forEach((c, i) => {
     const tr = document.createElement('tr');
-    tr.innerHTML = `<td>${i+1}</td><td>${c.caller_number||'—'}</td><td>${c.direction}</td>
+    tr.innerHTML = `<td>${i+1}</td><td>${c.caller_number||'—'}</td>
       <td style="max-width:180px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">${c.purpose||'—'}</td>
       <td>${c.follow_up_time||'—'}</td>
+      <td>${c.birthday||'—'}</td>
       <td>${c.cost!=null?'$'+Number(c.cost).toFixed(4):'—'}</td>
       <td>${c.ended_at||'—'}</td>`;
     tr.onclick = () => toggleTranscript(i, tr, c.transcript);
@@ -65,7 +66,7 @@ function toggleTranscript(id, tr, transcript) {
   const existing = document.getElementById('t'+id);
   if (existing) { existing.remove(); return; }
   const row = document.createElement('tr'); row.id = 't'+id;
-  const td = document.createElement('td'); td.colSpan = 7;
+  const td = document.createElement('td'); td.colSpan = 7; // #, caller, purpose, follow-up, birthday, cost, ended
   const box = document.createElement('div'); box.className = 'transcript';
   const items = Array.isArray(transcript) ? transcript : [];
   box.innerHTML = items.length

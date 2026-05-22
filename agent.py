@@ -306,15 +306,18 @@ async def entrypoint(ctx: JobContext):
     def on_participant_disconnected(participant):
         if participant.identity == "human_rep":
             print("[TRANSFER] Supervisor dropped — Aria resuming.")
-            asyncio.ensure_future(
-                session.generate_reply(
-                    instructions=(
-                        "The supervisor has just left the call. "
-                        "Re-introduce yourself as Aria and let the caller know you're back. "
-                        "Ask how you can continue to help them."
+            try:
+                asyncio.ensure_future(
+                    session.generate_reply(
+                        instructions=(
+                            "The supervisor has just left the call. "
+                            "Re-introduce yourself as Aria and let the caller know you're back. "
+                            "Ask how you can continue to help them."
+                        )
                     )
                 )
-            )
+            except RuntimeError as e:
+                print(f"[TRANSFER] Could not resume — session already stopped: {e}")
 
     await session.start(room=ctx.room, agent=agent)
 
