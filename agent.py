@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 from livekit import agents, api, rtc
 from livekit.agents import AgentSession, Agent, JobContext, function_tool, RunContext
 from livekit.agents.metrics import RealtimeModelMetrics
-from livekit.plugins import google
+from livekit.plugins import google, noise_cancellation
 
 load_dotenv()
 
@@ -267,7 +267,8 @@ async def entrypoint(ctx: JobContext):
         llm=google.beta.realtime.RealtimeModel(
             model="gemini-2.5-flash-native-audio-preview-12-2025",
             voice="Puck",
-        )
+        ),
+        noise_cancellation=noise_cancellation.BVC(),
     )
     agent._session = session
 
