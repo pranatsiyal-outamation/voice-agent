@@ -8,7 +8,8 @@ from dotenv import load_dotenv
 from livekit import agents, api, rtc
 from livekit.agents import AgentSession, Agent, JobContext, function_tool, RunContext
 from livekit.agents.metrics import RealtimeModelMetrics
-from livekit.plugins import google, noise_cancellation
+from livekit.plugins import google
+from deepfilter_audio import DeepFilterProcessor, run_filter_pipeline
 
 load_dotenv()
 
@@ -243,6 +244,28 @@ async def entrypoint(ctx: JobContext):
     await ctx.connect()
     started_at = datetime.utcnow()
 
+    # Load DeepFilterNet once — stays alive for the duration of the job
+    df_processor = DeepFilterProcessor()
+
+    @ctx.room.on("track_subscribed")
+    def on_track_subscribed(track, _publication, participant):
+        # Only filter audio from the caller, not the agent or human rep
+        if (
+            track.kind == rtc.TrackKind.KIND_AUDIO
+            and participant.identity not in ("agent", "human_rep")
+        ):
+            print(f"[DEEPFILTER] Starting filter pipeline for {participant.identity}")
+            filtered_source = rtc.AudioSource(sample_rate=16000, num_channels=1)
+            filtered_track = rtc.LocalAudioTrack.create_audio_track(
+                f"filtered-{participant.identity}", filtered_source
+            )
+            asyncio.ensure_future(
+                ctx.room.local_participant.publish_track(filtered_track)
+            )
+            asyncio.ensure_future(
+                run_filter_pipeline(track, filtered_source, df_processor)
+            )
+
     metadata = ctx.job.metadata or "{}"
     try:
         meta = json.loads(metadata)
@@ -278,7 +301,7 @@ async def entrypoint(ctx: JobContext):
             model="gemini-2.5-flash-native-audio-preview-12-2025",
             voice="Puck",
         ),
-        noise_cancellation=noise_cancellation.BVC(),
+
     )
     agent._session = session
 
