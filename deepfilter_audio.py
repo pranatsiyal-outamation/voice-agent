@@ -1,10 +1,24 @@
 import asyncio
+import sys
+import types
 import numpy as np
 import torch
+import torchaudio
 from math import gcd
 from scipy.signal import resample_poly
-from df.enhance import enhance, init_df
 from livekit import rtc
+
+# deepfilternet 0.5.6 references torchaudio.backend.common which was removed
+# in torchaudio 2.x — shim it before importing df so the import doesn't fail
+if "torchaudio.backend.common" not in sys.modules:
+    _backend = types.ModuleType("torchaudio.backend")
+    _common = types.ModuleType("torchaudio.backend.common")
+    _common.AudioMetaData = torchaudio.AudioMetaData
+    _backend.common = _common
+    sys.modules["torchaudio.backend"] = _backend
+    sys.modules["torchaudio.backend.common"] = _common
+
+from df.enhance import enhance, init_df
 
 DF_SAMPLE_RATE = 48000  # DeepFilterNet native rate
 CHUNK_MS = 20           # process in 20ms chunks — balances latency vs quality
