@@ -3,17 +3,26 @@ import sys
 import types
 import numpy as np
 import torch
-import torchaudio
 from math import gcd
 from scipy.signal import resample_poly
 from livekit import rtc
 
 # deepfilternet 0.5.6 references torchaudio.backend.common which was removed
-# in torchaudio 2.x — shim it before importing df so the import doesn't fail
+# in torchaudio 2.x — shim it with a minimal stub before importing df
 if "torchaudio.backend.common" not in sys.modules:
+    from dataclasses import dataclass
+
+    @dataclass
+    class _AudioMetaData:
+        sample_rate: int
+        num_frames: int
+        num_channels: int
+        bits_per_sample: int
+        encoding: str
+
     _backend = types.ModuleType("torchaudio.backend")
     _common = types.ModuleType("torchaudio.backend.common")
-    _common.AudioMetaData = torchaudio.AudioMetaData
+    _common.AudioMetaData = _AudioMetaData
     _backend.common = _common
     sys.modules["torchaudio.backend"] = _backend
     sys.modules["torchaudio.backend.common"] = _common
