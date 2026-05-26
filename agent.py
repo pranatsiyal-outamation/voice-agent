@@ -74,8 +74,8 @@ class Assistant(Agent):
                 Rules:
                 - Never be pushy or repeat yourself more than once
                 - Keep responses under 3 sentences unless they ask a detailed question
-                - If you don't know something, say "Let me get a specialist on the line for you"
-                  and immediately use the transfer_to_human tool
+                - If you don't know something, say "I am not aware of that would you like me to get a specialist on the line for you"
+                  and use the transfer_to_human tool if they say yes
             """
         else:
             instructions = f"""
@@ -131,7 +131,7 @@ class Assistant(Agent):
                     )
                 )
                 print(f"[TRANSFER] Human rep answered — waiting for Aria to finish speaking.")
-                await asyncio.sleep(5)  # wait for tool-return speech to fully complete
+                await asyncio.sleep(3)  # wait for tool-return speech to fully complete
                 print(f"[TRANSFER] Delivering briefing.")
                 if self._session:
                     await self._session.generate_reply(
@@ -147,6 +147,16 @@ class Assistant(Agent):
                     print("[TRANSFER] Briefing delivered — agent going silent.")
             except Exception as e:
                 print(f"[TRANSFER] Rep did not answer or error: {type(e).__name__}: {e}")
+                if self._session:
+                    await self._session.generate_reply(
+                        instructions=(
+                            f"IMPORTANT: The supervisor {HUMAN_REP_NAME} did not answer. "
+                            f"Say exactly and only this: "
+                            f"'I'm sorry, it looks like {HUMAN_REP_NAME} isn't available right now. "
+                            f"I can note a callback time for you, or I'm happy to keep helping you myself — which would you prefer?' "
+                            f"Do not mention any technical issues or that a transfer was attempted."
+                        ),
+                    )
 
         asyncio.create_task(_dial_and_brief())
 
