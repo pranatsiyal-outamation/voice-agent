@@ -1,6 +1,8 @@
 import requests
 import os
+from dotenv import load_dotenv   # ← ADD THIS
 
+load_dotenv()   
 def trigger_outbound_call(to_number: str, contractor_name: str, shipment_id: str):
     """
     Trigger an outbound contractor follow-up call via ElevenLabs.
