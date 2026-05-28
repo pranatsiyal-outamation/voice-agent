@@ -19,11 +19,6 @@ def trigger_outbound_call(to_number: str, contractor_name: str, shipment_id: str
                 "dynamic_variables": {
                     "contractor_name": contractor_name,
                     "shipment_id": shipment_id,
-                },
-                "conversation_config_override": {
-                    "agent": {
-                        "first_message": f"Hi, am I speaking with {contractor_name}?"
-                    }
                 }
             }
         }
