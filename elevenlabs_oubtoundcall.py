@@ -1,13 +1,10 @@
 import requests
 import os
-from dotenv import load_dotenv   # ← ADD THIS
+from dotenv import load_dotenv
 
-load_dotenv()   
+load_dotenv()
+
 def trigger_outbound_call(to_number: str, contractor_name: str, shipment_id: str):
-    """
-    Trigger an outbound contractor follow-up call via ElevenLabs.
-    Dynamic variables get injected into the workflow's prompts at runtime.
-    """
     response = requests.post(
         "https://api.elevenlabs.io/v1/convai/twilio/outbound-call",
         headers={
@@ -22,23 +19,21 @@ def trigger_outbound_call(to_number: str, contractor_name: str, shipment_id: str
                 "dynamic_variables": {
                     "contractor_name": contractor_name,
                     "shipment_id": shipment_id,
+                },
+                "conversation_config_override": {
+                    "agent": {
+                        "first_message": f"Hi, am I speaking with {contractor_name}?"
+                    }
                 }
-            "conversation_config_override": {            # ← ADD THIS BLOCK
-                "agent": {
-                    "first_message": f"Hi, am I speaking with {contractor_name}?",
-                }
-            }
             }
         }
     )
     response.raise_for_status()
     return response.json()
 
-# Use it:
 result = trigger_outbound_call(
     to_number="+15307616112",
     contractor_name="John Smith",
     shipment_id="SH-12345"
 )
 print(result)
-# {"success": True, "callSid": "CA...", "conversation_id": "conv_..."}
