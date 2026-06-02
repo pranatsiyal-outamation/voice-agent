@@ -69,7 +69,7 @@ Your only job in this step:
 - Ask whether shipment {shipment_id} has shipped yet
 - If yes, ask for the ship date
 - If no, ask when they expect to ship it, if they provide a date, confirm it back to them and call confirm_followup_date
-if they don't provide a follow up date, then call request_human_callback. 
+if they don't provide a follow up date, if they don't provide a follow up date, provide the option of a human following up with them. Then call request_human_callback. 
 - Do NOT invent tracking numbers, delivery statuses, or details you weren't given
 Keep responses under 2 sentences.
 
