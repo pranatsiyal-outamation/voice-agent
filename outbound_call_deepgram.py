@@ -29,7 +29,7 @@ async def trigger_shipment_followup(
             metadata=json.dumps({
                 "direction":        "outbound",
                 "phone_number":     to_number,
-                "trunk_id":         trunk_id or os.getenv("SIP_TRUNK_ID"),
+                "trunk_id":         trunk_id or os.getenv("SIP_TRUNK_ID", "ST_rsf8HGUzUuFx"),
                 "contractor_name":  contractor_name,
                 "shipment_id":      shipment_id,
             }),
