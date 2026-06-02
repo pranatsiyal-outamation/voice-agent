@@ -27,85 +27,6 @@ LLM_INPUT_PER_1M      = 0.075
 LLM_OUTPUT_PER_1M     = 0.30
 TWILIO_COST_PER_MIN   = 0.02
 
-# ─────────────────────────────────────────────────────────
-# STATE MACHINE
-# ─────────────────────────────────────────────────────────
-
-#  START
-#    ↓ (unconditional)
-#  CONFIRM_IDENTITY
-#    ↓ identity_confirmed      →  SHIPMENT_STATUS
-#    ↓ wrong_person            →  POLITE_HANGUP       [terminal]
-#  SHIPMENT_STATUS
-#    ↓ status_obtained         →  OPTIONS
-#  OPTIONS
-#    ↓ schedule_followup       →  SCHEDULE_FOLLOWUP   [terminal]
-#    ↓ request_human_callback  →  HUMAN_CALLBACK      [terminal]
-
-def _build_instructions(state: str, contractor_name: str, shipment_id: str) -> str:
-    if state == "CONFIRM_IDENTITY":
-        return (
-            f"You are Al, calling on behalf of {COMPANY_NAME} to follow up on a shipment.\n"
-            f"Your only job in this step:\n"
-            f"- Confirm you are speaking with {contractor_name}\n"
-            f"- Wait for their confirmation\n"
-            f"If they confirm it's them → call the identity_confirmed tool\n"
-            f"If they say it's not them or wrong number → call the wrong_person tool\n"
-            f"Be warm and brief. One sentence is enough."
-        )
-    if state == "SHIPMENT_STATUS":
-        return (
-            f"You are Al from {COMPANY_NAME}. The caller is confirmed to be {contractor_name}.\n"
-            f"Shipment ID: {shipment_id}\n"
-            f"Your only job in this step:\n"
-            f"- Ask about the shipment status\n"
-            f"- Listen for their answer (shipped, not shipped, delayed, etc.)\n"
-            f"- Briefly acknowledge what they said\n"
-            f"- Do NOT pressure them or repeat the question\n"
-            f"Once they have shared the status → call the status_obtained tool.\n"
-            f"Keep responses under 2 sentences. Be professional and brief."
-        )
-    if state == "OPTIONS":
-        return (
-            f"You are Al from {COMPANY_NAME}. The caller is confirmed to be {contractor_name}.\n"
-            f"CONTEXT (do not invent details beyond this):\n"
-            f"- Shipment ID: {shipment_id}\n"
-            f"- This shipment is past its expected ship date\n"
-            f"- You do NOT have tracking info — you are calling to GET that info\n"
-            f"Your only job in this step:\n"
-            f"- Ask whether shipment {shipment_id} has shipped yet\n"
-            f"- If yes, ask for the ship date\n"
-            f"- If no, ask when they expect to ship; if they can give a date, call the schedule_followup tool\n"
-            f"- If they cannot give a date or prefer a person, offer a human follow-up and call the request_human_callback tool\n"
-            f"- Do NOT invent tracking numbers or details you weren't given\n"
-            f"Tools available in this step: schedule_followup, request_human_callback\n"
-            f"Keep responses under 2 sentences."
-        )
-    if state == "SCHEDULE_FOLLOWUP":
-        return (
-            f"The caller has agreed to schedule a specific follow-up date.\n"
-            f"Your only job in this step:\n"
-            f"- Ask for a specific date (e.g., 'next Tuesday', 'May 30th', 'June 20th 2026')\n"
-            f"- Listen carefully for the date they give\n"
-            f"- Repeat the date back to them to confirm\n"
-            f"- Once you have a clear confirmed date → call the confirm_followup_date tool with that date\n"
-            f"Do not move forward until you have a clear date."
-        )
-    if state == "HUMAN_CALLBACK":
-        return (
-            f"The caller has requested a human callback.\n"
-            f"Say exactly: 'Perfect, I've noted that you'd like a human to call you back. "
-            f"Thanks for your time, {contractor_name}. Have a great day!'\n"
-            f"Then call the end_call tool. Do not ask anything else."
-        )
-    if state == "POLITE_HANGUP":
-        return (
-            f"You have reached the wrong person.\n"
-            f"Say exactly: 'Apologies for the confusion. I must have the wrong number. Have a great day!'\n"
-            f"Then call the end_call tool. Do not say anything else."
-        )
-    return f"You are Al from {COMPANY_NAME}."
-
 
 # ─────────────────────────────────────────────────────────
 # AGENT
@@ -123,110 +44,99 @@ class ShipmentFollowupAgent(Agent):
         self._shipment_id = shipment_id
         self._ctx = ctx
         self._trunk_id = trunk_id
-        self._state = "CONFIRM_IDENTITY"
-        self._session = None
         self._captured = {
             "shipment_status": None,
             "follow_up_date": None,
             "wants_human": False,
             "outcome": None,
         }
-        super().__init__(
-            instructions=_build_instructions("CONFIRM_IDENTITY", contractor_name, shipment_id)
-        )
 
-    async def _go_to(self, new_state: str):
-        """Transition to new_state: update instructions then drive the first reply."""
-        self._state = new_state
-        new_instr = _build_instructions(new_state, self._contractor_name, self._shipment_id)
-        self.instructions = new_instr
-        if self._session is not None:
-            # Wait for the tool-return speech to finish before generating the next turn.
-            await asyncio.sleep(1.0)
-            await self._session.generate_reply(instructions=new_instr)
+        super().__init__(instructions=f"""
+You are Al, a professional outbound caller for {COMPANY_NAME}.
+You are calling about shipment {shipment_id}.
+
+CALL FLOW — work through these steps naturally and in order:
+
+STEP 1 — CONFIRM IDENTITY
+Greet warmly and confirm you are speaking with {contractor_name}.
+- If confirmed: continue to Step 2
+- If wrong person or wrong number: say "Apologies for the confusion. I must have the wrong number. Have a great day!" then call end_call
+
+STEP 2 — GET SHIPMENT STATUS
+Ask {contractor_name} for an update on shipment {shipment_id} This shipment is past its expected ship date.
+You do NOT have tracking info or delivery status — you are calling to GET that info
+Your only job in this step:
+- Ask whether shipment {shipment_id} has shipped yet
+- If yes, ask for the ship date
+- If no, ask when they expect to ship it, if they provide a date, confirm it back to them and call confirm_followup_date
+if they don't provide a follow up date, then call request_human_callback. 
+- Do NOT invent tracking numbers, delivery statuses, or details you weren't given
+Keep responses under 2 sentences.
+
+RULES:
+- Keep all responses under 2 sentences
+- Never ask more than one question at a time
+- Be warm, professional, and brief — never robotic
+- Do NOT invent tracking numbers, delivery dates, or any details you were not given
+""")
 
     async def _disconnect_after(self, delay: float = 4.0):
         await asyncio.sleep(delay)
         await self._ctx.room.disconnect()
 
-    # ── Tool 1 ──────────────────────────────────────────────
-    @function_tool
-    async def identity_confirmed(self, _context: RunContext):
-        """Call this when the caller confirms they are the correct person (e.g. 'yes', 'speaking')."""
-        print("[WORKFLOW] identity_confirmed → SHIPMENT_STATUS")
-        self._captured["outcome"] = "identity_confirmed"
-        asyncio.ensure_future(self._go_to("SHIPMENT_STATUS"))
-        return ""
+    # ── Tool 1: Capture shipment status ────────────────────
+    # @function_tool
+    # async def note_shipment_status(self, _context: RunContext, status: str):
+    #     """
+    #     Call this once the caller has shared any information about the shipment status.
+    #     'status' is a brief summary of what they said (e.g. 'shipped May 20', 'not yet', 'delayed by a week').
+    #     """
+    #     print(f"[CAPTURED] shipment_status={status!r}")
+    #     self._captured["shipment_status"] = status
+    #     return ""
 
-    # ── Tool 2 ──────────────────────────────────────────────
+    # ── Tool 2: Confirm follow-up date and end call ─────────
     @function_tool
-    async def wrong_person(self, context: RunContext):
-        """Call this when the caller says this is the wrong person or wrong number."""
-        print("[WORKFLOW] wrong_person → POLITE_HANGUP")
-        self._captured["outcome"] = "wrong_person"
-        asyncio.ensure_future(self._go_to("POLITE_HANGUP"))
-        return ""
-
-    # ── Tool 3 ──────────────────────────────────────────────
-    @function_tool
-    async def status_obtained(self, context: RunContext, status: str):
-        """
-        Call this once the caller has shared information about the shipment status.
-        'status' is a brief summary of what they said (e.g., 'shipped May 20', 'not yet', 'delayed').
-        """
-        print(f"[WORKFLOW] status_obtained: {status!r} → OPTIONS")
-        self._captured["shipment_status"] = status
-        asyncio.ensure_future(self._go_to("OPTIONS"))
-        return ""
-
-    # ── Tool 4 ──────────────────────────────────────────────
-    @function_tool
-    async def schedule_followup(self, context: RunContext):
-        """Call this when the caller has chosen to schedule a specific follow-up date."""
-        print("[WORKFLOW] schedule_followup → SCHEDULE_FOLLOWUP")
-        asyncio.ensure_future(self._go_to("SCHEDULE_FOLLOWUP"))
-        return ""
-
-    # ── Tool 5 ──────────────────────────────────────────────
-    @function_tool
-    async def confirm_followup_date(self, context: RunContext, date: str):
+    async def confirm_followup_date(self, _context: RunContext, date: str):
         """
         Call this once a specific follow-up date has been confirmed with the caller.
-        'date' is exactly what they said (e.g., 'next Friday', 'June 20th').
+        'date' is exactly what they said (e.g. 'next Friday', 'June 20th').
         """
-        print(f"[WORKFLOW] confirm_followup_date: {date!r} — ending call")
+        print(f"[CAPTURED] follow_up_date={date!r}")
         self._captured["follow_up_date"] = date
         self._captured["outcome"] = "follow_up_scheduled"
-        # Drive an explicit farewell before disconnecting.
-        async def _farewell_and_disconnect():
-            if self._session is not None:
-                await self._session.generate_reply(
-                    instructions=(
-                        f"The follow-up has been confirmed for {date}. "
-                        f"Say exactly: 'Great, I've noted the follow-up for {date}. "
-                        f"Thanks for your time, {self._contractor_name}. Have a great day!' "
-                        f"Then stop speaking."
-                    )
-                )
-            await self._disconnect_after(4.0)
-        asyncio.ensure_future(_farewell_and_disconnect())
-        return ""
+        asyncio.ensure_future(self._disconnect_after(5.0))
+        return (
+            f"Follow-up confirmed for {date}. "
+            f"Say: 'Great, I've noted the follow-up for {date}. "
+            f"Thanks for your time, {self._contractor_name}. Have a great day!' "
+            f"Then stop speaking."
+        )
 
-    # ── Tool 6 ──────────────────────────────────────────────
+    # ── Tool 3: Note human callback request and end call ───
     @function_tool
-    async def request_human_callback(self, context: RunContext):
-        """Call this when the caller wants a human to call them back."""
-        print("[WORKFLOW] request_human_callback → HUMAN_CALLBACK")
+    async def request_human_callback(self, _context: RunContext):
+        """
+        Call this when the caller would prefer a human from our team to call them back.
+        """
+        print("[CAPTURED] wants_human=True")
         self._captured["wants_human"] = True
         self._captured["outcome"] = "human_callback_requested"
-        asyncio.ensure_future(self._go_to("HUMAN_CALLBACK"))
-        return ""
+        asyncio.ensure_future(self._disconnect_after(5.0))
+        return (
+            f"Say: 'Perfect, I've noted that you'd like a human to call you back. "
+            f"Thanks for your time, {self._contractor_name}. Have a great day!' "
+            f"Then stop speaking."
+        )
 
-    # ── Tool 7 ──────────────────────────────────────────────
+    # ── Tool 4: End call (wrong number / natural close) ────
     @function_tool
-    async def end_call(self, context: RunContext):
-        """Call this after delivering the final message in a terminal state to hang up."""
-        print(f"[WORKFLOW] end_call — state={self._state}")
+    async def end_call(self, _context: RunContext):
+        """
+        Call this to hang up after delivering a final message.
+        """
+        print("[CALL] end_call triggered")
+        self._captured["outcome"] = self._captured["outcome"] or "ended"
         asyncio.ensure_future(self._disconnect_after(3.0))
         return "Call ending."
 
@@ -275,7 +185,6 @@ async def entrypoint(ctx: JobContext):
         llm=google.LLM(model="gemini-2.5-flash"),
         tts=deepgram.TTS(model="aura-2-thalia-en"),
     )
-    agent._session = session
 
     @session.on("metrics_collected")
     def on_metrics(event):
@@ -354,11 +263,10 @@ async def entrypoint(ctx: JobContext):
         follow_up_dt = None
         if agent._captured["follow_up_date"]:
             try:
-                parsed = dateparser.parse(
+                follow_up_dt = dateparser.parse(
                     agent._captured["follow_up_date"],
                     settings={"RETURN_AS_TIMEZONE_AWARE": False, "TO_TIMEZONE": "UTC"},
                 )
-                follow_up_dt = parsed
             except Exception as e:
                 print(f"[FOLLOWUP PARSE ERROR] {e}")
 
