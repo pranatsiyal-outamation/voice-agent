@@ -106,9 +106,11 @@ RULES:
         self._captured["follow_up_date"] = date
         self._captured["outcome"] = "follow_up_scheduled"
         asyncio.ensure_future(self._disconnect_after(5.0))
+        parsed = dateparser.parse(date, settings={"RETURN_AS_TIMEZONE_AWARE": False})
+        spoken_date = parsed.strftime("%B %d, %Y") if parsed else date
         return (
-            f"Follow-up confirmed for {date}. "
-            f"Say: 'Great, I've noted the follow-up for {date}. "
+            f"Follow-up confirmed for {spoken_date}. "
+            f"Say: 'Great, I've noted the follow-up for {spoken_date}. "
             f"Thanks for your time, {self._contractor_name}. Have a great day!' "
             f"Then stop speaking."
         )
@@ -276,8 +278,9 @@ async def entrypoint(ctx: JobContext):
                 """
                 INSERT INTO calls
                     (caller_number, direction, purpose, transcript,
-                     follow_up_time, birthday, cost, ended_at)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+                     follow_up_time, birthday, cost, ended_at,
+                     shipment_status, outcome, wants_human)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), $8, $9, $10)
                 """,
                 phone_number or ctx.room.name,
                 direction,
@@ -286,6 +289,9 @@ async def entrypoint(ctx: JobContext):
                 follow_up_dt,
                 None,
                 total_cost,
+                agent._captured["shipment_status"],
+                agent._captured["outcome"],
+                agent._captured["wants_human"],
             )
             await conn.close()
             print(f"[DB] Call saved. cost=${total_cost:.4f}")
