@@ -23,18 +23,40 @@ HTML = """<!DOCTYPE html>
   .transcript { background: #0d0d0d; padding: 10px; font-size: 11px; line-height: 1.8; }
   .user { color: #60a5fa; } .assistant { color: #a78bfa; }
   #info { font-size: 12px; color: #555; margin-left: 10px; }
+  .badge { display:inline-block; padding:2px 7px; border-radius:3px; font-size:11px; font-weight:bold; }
+  .badge-yes { background:#7f1d1d; color:#fca5a5; }
+  .badge-no  { background:#14532d; color:#86efac; }
+  .badge-scheduled  { background:#1e3a5f; color:#93c5fd; }
+  .badge-ended      { background:#2d2d2d; color:#888; }
 </style></head>
 <body>
-<h2 style="margin-bottom:12px">Call Log</h2>
+<h2 style="margin-bottom:12px">Shipment Follow-up Calls</h2>
 <button onclick="load()">Refresh</button><span id="info"></span>
 <table>
   <thead><tr>
-    <th>#</th><th>Caller</th><th>Purpose</th>
-    <th>Follow-up</th><th>Birthday</th><th>Cost</th><th>Ended</th>
+    <th>#</th>
+    <th>Caller</th>
+    <th>Shipment ID</th>
+    <th>Shipment Status</th>
+    <th>Follow-up Date</th>
+    <th>Human Callback</th>
+    <th>Outcome</th>
+    <th>Cost</th>
+    <th>Ended</th>
   </tr></thead>
   <tbody id="tb"></tbody>
 </table>
 <script>
+function badge(text, cls) {
+  return `<span class="badge ${cls}">${text}</span>`;
+}
+function outcomeBadge(o) {
+  if (!o) return '—';
+  if (o === 'follow_up_scheduled')     return badge('scheduled', 'badge-scheduled');
+  if (o === 'human_callback_requested') return badge('human req.', 'badge-yes');
+  if (o === 'wrong_person')             return badge('wrong #', 'badge-ended');
+  return badge(o, 'badge-ended');
+}
 async function load() {
   document.getElementById('info').textContent = 'Loading...';
   let rows;
@@ -51,10 +73,15 @@ async function load() {
   tb.innerHTML = '';
   rows.forEach((c, i) => {
     const tr = document.createElement('tr');
-    tr.innerHTML = `<td>${i+1}</td><td>${c.caller_number||'—'}</td>
-      <td style="max-width:180px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">${c.purpose||'—'}</td>
+    const humanBadge = c.wants_human ? badge('Yes', 'badge-yes') : badge('No', 'badge-no');
+    tr.innerHTML = `
+      <td>${i+1}</td>
+      <td>${c.caller_number||'—'}</td>
+      <td style="max-width:140px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">${c.purpose||'—'}</td>
+      <td style="max-width:180px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">${c.shipment_status||'—'}</td>
       <td>${c.follow_up_time||'—'}</td>
-      <td>${c.birthday||'—'}</td>
+      <td>${humanBadge}</td>
+      <td>${outcomeBadge(c.outcome)}</td>
       <td>${c.cost!=null?'$'+Number(c.cost).toFixed(4):'—'}</td>
       <td>${c.ended_at||'—'}</td>`;
     tr.onclick = () => toggleTranscript(i, tr, c.transcript);
@@ -66,12 +93,11 @@ function toggleTranscript(id, tr, transcript) {
   const existing = document.getElementById('t'+id);
   if (existing) { existing.remove(); return; }
   const row = document.createElement('tr'); row.id = 't'+id;
-  const td = document.createElement('td'); td.colSpan = 7; // #, caller, purpose, follow-up, birthday, cost, ended
+  const td = document.createElement('td'); td.colSpan = 9;
   const box = document.createElement('div'); box.className = 'transcript';
   const items = Array.isArray(transcript) ? transcript : [];
   box.innerHTML = items.length
-    ? '<div style="color:#555;font-size:10px;margin-bottom:6px">* After transfer, HUMAN includes both caller and supervisor audio</div>'
-      + items.map(m => `<div class="${m.role}"><b>${m.role==='user'?'HUMAN':'ARIA'}:</b> ${m.text||'<i style="color:#444">audio only</i>'}</div>`).join('')
+    ? items.map(m => `<div class="${m.role}"><b>${m.role==='user'?'CALLER':'AL'}:</b> ${m.text||'<i style="color:#444">audio only</i>'}</div>`).join('')
     : '<i style="color:#444">No transcript</i>';
   td.appendChild(box); row.appendChild(td); tr.after(row);
 }
@@ -90,7 +116,7 @@ async def fetch_calls():
     try:
         rows = await conn.fetch(
             "SELECT caller_number, direction, purpose, follow_up_time, "
-            "birthday, cost, ended_at, transcript "
+            "shipment_status, wants_human, outcome, cost, ended_at, transcript "
             "FROM calls ORDER BY ended_at DESC NULLS LAST LIMIT 100"
         )
     finally:
@@ -106,7 +132,7 @@ async def fetch_calls():
 
 
 class Handler(BaseHTTPRequestHandler):
-    def log_message(self, *args): pass  # silence request logs
+    def log_message(self, *args): pass
 
     def do_GET(self):
         if self.path == "/api/calls":
