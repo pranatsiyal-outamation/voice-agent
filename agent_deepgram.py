@@ -270,7 +270,7 @@ async def entrypoint(ctx: JobContext):
             model="nova-3",
             language="en-US",
             smart_format=True,
-            endpointing=300,
+            endpointing_ms=300,
         ),
         llm=google.LLM(model="gemini-2.5-flash"),
         tts=deepgram.TTS(model="aura-2-thalia-en"),
