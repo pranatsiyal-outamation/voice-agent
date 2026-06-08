@@ -50,6 +50,7 @@ class ShipmentFollowupAgent(Agent):
             "wants_human": False,
             "outcome": None,
         }
+        self._disconnecting = False
 
         super().__init__(instructions=f"""
 You are Al, a professional outbound caller for {COMPANY_NAME}.
@@ -81,6 +82,9 @@ RULES:
 """)
 
     async def _disconnect_after(self, delay: float = 4.0):
+        if self._disconnecting:
+            return
+        self._disconnecting = True
         await asyncio.sleep(delay)
         await self._ctx.room.disconnect()
 
@@ -193,7 +197,8 @@ async def entrypoint(ctx: JobContext):
         nonlocal total_llm_input_tokens, total_llm_output_tokens, total_tts_chars
         m = event.metrics
         if hasattr(m, "prompt_tokens"):
-            total_llm_input_tokens  += m.prompt_tokens
+            total_llm_input_tokens += m.prompt_tokens
+        if hasattr(m, "completion_tokens"):
             total_llm_output_tokens += m.completion_tokens
         if hasattr(m, "characters_count"):
             total_tts_chars += m.characters_count
@@ -272,31 +277,36 @@ async def entrypoint(ctx: JobContext):
             except Exception as e:
                 print(f"[FOLLOWUP PARSE ERROR] {e}")
 
-        try:
-            conn = await asyncpg.connect(os.getenv("DATABASE_URL"))
-            await conn.execute(
-                """
-                INSERT INTO calls
-                    (caller_number, direction, purpose, transcript,
-                     follow_up_time, birthday, cost, ended_at,
-                     shipment_status, outcome, wants_human)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), $8, $9, $10)
-                """,
-                phone_number or ctx.room.name,
-                direction,
-                shipment_id,
-                json.dumps(transcript),
-                follow_up_dt,
-                None,
-                total_cost,
-                agent._captured["shipment_status"],
-                agent._captured["outcome"],
-                agent._captured["wants_human"],
-            )
-            await conn.close()
-            print(f"[DB] Call saved. cost=${total_cost:.4f}")
-        except Exception as e:
-            print(f"[DB ERROR] {e}")
+        db_url = os.getenv("DATABASE_URL")
+        if not db_url:
+            print("[DB WARNING] DATABASE_URL is not set — call record will not be saved.")
+        else:
+            conn = await asyncpg.connect(db_url)
+            try:
+                await conn.execute(
+                    """
+                    INSERT INTO calls
+                        (caller_number, direction, purpose, transcript,
+                         follow_up_time, birthday, cost, ended_at,
+                         shipment_status, outcome, wants_human)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), $8, $9, $10)
+                    """,
+                    phone_number or ctx.room.name,
+                    direction,
+                    shipment_id,
+                    json.dumps(transcript),
+                    follow_up_dt,
+                    None,
+                    total_cost,
+                    agent._captured["shipment_status"],
+                    agent._captured["outcome"],
+                    agent._captured["wants_human"],
+                )
+                print(f"[DB] Call saved. cost=${total_cost:.4f}")
+            except Exception as e:
+                print(f"[DB ERROR] {e}")
+            finally:
+                await conn.close()
 
 
 # ─────────────────────────────────────────────────────────
