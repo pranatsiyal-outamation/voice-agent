@@ -86,6 +86,23 @@ RULES:
             return
         self._disconnecting = True
         await asyncio.sleep(delay)
+
+        # Remove the SIP participant to send a SIP BYE and end the Twilio call.
+        # room.disconnect() only drops the agent; the phone leg stays up otherwise.
+        for identity in list(self._ctx.room.remote_participants):
+            if identity.startswith("phone_"):
+                try:
+                    await self._ctx.api.room.remove_participant(
+                        api.RoomParticipantIdentity(
+                            room=self._ctx.room.name,
+                            identity=identity,
+                        )
+                    )
+                    print(f"[HANGUP] Removed SIP participant: {identity}")
+                except Exception as e:
+                    print(f"[HANGUP] Could not remove SIP participant: {e}")
+                break
+
         await self._ctx.room.disconnect()
 
     # ── Tool 1: Capture shipment status ────────────────────
@@ -143,7 +160,7 @@ RULES:
         """
         print("[CALL] end_call triggered")
         self._captured["outcome"] = self._captured["outcome"] or "ended"
-        asyncio.ensure_future(self._disconnect_after(3.0))
+        asyncio.ensure_future(self._disconnect_after(4.0))
         return "Call ending."
 
 
