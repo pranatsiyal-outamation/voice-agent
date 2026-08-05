@@ -192,6 +192,11 @@ See [`readme.md`](readme.md) for the full latency and quality comparison.
 
 ## Notes
 
+additional feature to test
+1. bi llm model on to listen and another to guide the reponse. similar to meta voice approach
+2. develop a background noise cancellation in house solution while keeping latency in check.
+3. red data set to see how secure the model is to prompt injection.
+
 - `.env`, `venv/`, `__pycache__/`, and `*.log` are gitignored.
 - The agent removes the SIP participant on hangup to send a proper SIP BYE — otherwise the phone leg stays up after the agent disconnects.
 - Costs are computed live from LiveKit metrics (token counts, TTS characters, call duration) and stored per call.
